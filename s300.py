@@ -5,14 +5,14 @@ from napalm_base.base import NetworkDriver
 
 class S300Driver(NetworkDriver):
     def __init__(self, hostname, username, password, timeout=60, optional_args=None):
-        '''NAPALM Cisco S300 Handler.'''
+        """NAPALM Cisco S300 Handler."""
         if optional_args is None:
             optional_args = {}
         self.hostname = hostname
         self.username = username
         self.password = password
-        self.timeout  = timeout
-
+        self.timeout = timeout
+        
         netmiko_argument_map = {
             'port': None,
             'secret': '',
@@ -46,3 +46,47 @@ class S300Driver(NetworkDriver):
 
         self.device = None
         self.profile = ['s300']
+
+    def open(self):
+        self.device = ConnectHandler(device_type='cisco_s300',
+                                     host=self.hostname,
+                                     username=self.username,
+                                     password=self.password,
+                                     **self.netmiko_optional_args)
+        self.device.enable()
+
+    def close(self):
+        self.device.disconnect()
+
+    def _send_command(self, command):
+        """Wrapper for self.device.send.command().
+
+        If command is a list will iterate through commands until valid command.
+        """
+        output = None
+        if isinstance(command, list):
+            for cmd in command:
+                output = self.device.send_command(cmd)
+                if "% Invalid" not in output:
+                    break
+        else:
+            output = self.device.send_command(command)
+        return output
+
+    def get_config(self, retrieve='all'):
+        configs = {
+            'startup': '',
+            'running': ''
+        }
+
+        if retrieve in ('startup', 'all'):
+            command = 'show startup-config'
+            output = self._send_command(command)
+            configs['startup'] = output
+
+        if retrieve in ('running', 'all'):
+            command = 'show running-config'
+            output = self._send_command(command)
+            configs['running'] = output
+
+        return configs
