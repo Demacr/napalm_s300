@@ -73,6 +73,17 @@ class S300Driver(NetworkDriver):
             output = self.device.send_command(command)
         return output
 
+    @staticmethod
+    def _parse_uptime(uptime_str):
+        uptime_str = uptime_str.strip()
+        days, hms = uptime_str.split(',') # 45,23:02:04
+        hours, minutes, seconds = hms.split(':')
+        days = int(days)
+        hours = int(hours)
+        minutes = int(minutes)
+        seconds = int(seconds)
+        return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
     def get_config(self, retrieve='all'):
         configs = {
             'startup': '',
@@ -90,3 +101,42 @@ class S300Driver(NetworkDriver):
             configs['running'] = output
 
         return configs
+
+    def get_facts(self):
+        vendor = u'Cisco'
+        uptime = -1
+        serial_number, fqdn, os_version, hostname, model = (u'Unknown', u'Unknown', u'Unknown', u'Unknown', u'Unknown')
+
+        show_system = self._send_command('show system')
+        show_system_id = self._send_command('show system id')
+        show_version = self._send_command('show version')
+        show_hosts = self._send_command('show hosts')
+        show_ip_int = self._send_command('show ip interface')
+
+        # uptime / hostname / model
+        for line in show_system.splitlines():
+            if 'System Up Time' in line:
+                _, uptime_str = line.split(':sec):')
+                uptime = self._parse_uptime(uptime_str)
+            if 'System Name:' in line:
+                hostname = line.split('Name:')[-1].strip()
+            if 'System Description' in line:
+                model = line.split(':')[1].strip().split(' ')[0]
+
+        # Serail number
+        _, serial_number = show_system_id.split(': ')
+
+        # OS version
+        # >SW version    1.4.5.02 ( date  20-Apr-2016 time  12:22:49 )\
+        for line in show_version.splitlines():
+            if 'SW version' in line:
+                os_version = line.split(' (')[0].split('version')[1].strip()
+
+        return {
+            'uptime': uptime,
+            'vendor': vendor,
+            'hostname': hostname,
+            'serial_number': serial_number,
+            'os_version': os_version,
+            'model': model
+        }
